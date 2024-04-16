@@ -1,5 +1,7 @@
 import re
 from urllib.parse import urlparse
+from bs4 import BeautifulSoup
+import requests
 
 def scraper(url, resp):
     links = extract_next_links(url, resp)
@@ -15,6 +17,8 @@ def extract_next_links(url, resp):
     #         resp.raw_response.url: the url, again
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
+
+    
     return list()
 
 def is_valid(url):
@@ -23,6 +27,23 @@ def is_valid(url):
     # There are already some conditions that return False.
     try:
         parsed = urlparse(url)
+        allowed_urls = ['.ics.uci.edu/*',
+                        '.cs.uci.edu/*',
+                        '.informatics.uci.edu/',
+                        '.stat.uci.edu/*']
+        
+        allowed = False
+        for check_against in allowed_urls:
+            if check_against in url:
+                allowed = True
+                break
+            
+        if not allowed:
+            return False
+        
+
+
+        
         if parsed.scheme not in set(["http", "https"]):
             return False
         return not re.match(
@@ -38,3 +59,21 @@ def is_valid(url):
     except TypeError:
         print ("TypeError for ", parsed)
         raise
+
+
+def get_webpage(url: str) -> BeautifulSoup:
+    '''
+    this function gets the webpage and returns a soup object
+
+    @return: Soup object
+    @error: None
+    '''
+    try:
+        response = requests.get(url)
+        if response.status_code != 200:
+            print("failed to fetch html from url:   ", url)
+            return None
+        return BeautifulSoup(response.text, html.parser) 
+    except requests.RequestException as e:
+        print(f"Error fetching HTML from {url}: {e}")
+        return None
