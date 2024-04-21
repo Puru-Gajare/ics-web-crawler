@@ -1,10 +1,34 @@
 import re
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
-import requests
+import collections
+
+# Global Variables:
+numberOfUniquePages = 0
+longestPageWordCount = 0
+fiftyMostCommonWords = dict()
+numberofSubdomains = 0
+
+
 
 def scraper(url, resp):
+    '''
+
+    url: actual url
+    resp: web response containing the page
+
+    return: list of urls scrapped from page
+    '''
+
+    # if url is not valid, don't parse it
+    if is_valid(url) == False:
+        return
+
+    # step 1: extract information from page's text in order to answer question on report
+    
+    # step 2: return list of urls scrapped from that page
     links = extract_next_links(url, resp)
+    
     return [link for link in links if is_valid(link)]
 
 def extract_next_links(url, resp):
@@ -17,9 +41,30 @@ def extract_next_links(url, resp):
     #         resp.raw_response.url: the url, again
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
-
     
-    return list()
+    if resp.status != 200:
+        # handle poor connection issues
+
+
+    urls_found = []
+    print(type(resp.raw_response.content))
+    soup = BeautifulSoup(resp.raw_response.content, "html.parser")
+    anchor_tags = soup.find_all("a")
+
+    # for every anchor tag, append
+    for anchor_tag in anchor_tags:
+        url = anchor_tag["href"]
+
+        # defragment url
+        urlWithoutFragment = url.split('#')[0]
+
+        urls_found.append(urlWithoutFragment)
+
+
+    text = soup.get_text()
+    tokenDictionary = computeWordFrequencies(tokenize(url))
+    
+    return urls_found
 
 def is_valid(url):
     # Decide whether to crawl this url or not. 
@@ -61,19 +106,19 @@ def is_valid(url):
         raise
 
 
-def get_webpage(url: str) -> BeautifulSoup:
-    '''
-    this function gets the webpage and returns a soup object
+# def get_webpage(url: str) -> BeautifulSoup:
+#     '''
+#     this function gets the webpage and returns a soup object
 
-    @return: Soup object
-    @error: None
-    '''
-    try:
-        response = requests.get(url)
-        if response.status_code != 200:
-            print("failed to fetch html from url:   ", url)
-            return None
-        return BeautifulSoup(response.text, html.parser) 
-    except requests.RequestException as e:
-        print(f"Error fetching HTML from {url}: {e}")
-        return None
+#     @return: Soup object
+#     @error: None
+#     '''
+#     try:
+#         response = requests.get(url)
+#         if response.status_code != 200:
+#             print("failed to fetch html from url:   ", url)
+#             return None
+#         return BeautifulSoup(response.text, html.parser) 
+#     except requests.RequestException as e:
+#         print(f"Error fetching HTML from {url}: {e}")
+#         return None
