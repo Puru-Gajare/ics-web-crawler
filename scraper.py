@@ -1,20 +1,22 @@
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
-import collections
 import tokenFunctions
-from utils import get_urlhash
+from utils import get_urlhash, get_logger
+from utils.response import Response
+
+
+# from crawler import frontier
 
 # Global Variables:
 numberOfUniquePages = 0
 longestPageWordCount = 0
 fiftyMostCommonWords = dict()
 numberofSubdomains = 0
-stopWords = {'but', 'by', 'it', 'out', 'up', "couldn't", 'ours', 'ourselves', 'of', 'whom', 'further', 'both', 'would', 'not', 'should', 'how', 'again', 'why', 'theirs', 'who', "where's", 'there', "hasn't", 'more', 'which', 'we', 'no', 'above', 'at', "we'd", 'before', 'they', 'ought', 'them', "won't", 'nor', "you're", 'myself', 'that', 'below', "you'd", 'as', "they've", 'is', 'then', 'our', 'when', "you'll", 'where', "it's", 'those', 'do', 'was', 'into', 'while', 'its', 'only', 'between', 'does', 'any', 'did', 'and', 'me', 'his', 'than', 'an', 'yourself', 'these', 'against', 'himself', 'be', 'because', 'each', "how's", 'are', 'most', 'some', 'have', "there's", 'all', 'she', 'so', "who's", "he's", 'through', 'themselves', 'been', "isn't", 'he', 'down', 'under', 'had', "mustn't", "shan't", "can't", "when's", 'i', 'for', 'very', "weren't", 'itself', 'with', 'her', "wasn't", 'a', 'herself', "we're", 'has', 'were', "she'll", "i'd", 'off', 'could', "he'd", "she's", "they're", "doesn't", "haven't", 'here', 'him', 'on', "i'll", 'over', 'too', 'about', "why's", 'your', "aren't", 'same', "that's", 'doing', 'their', 'in', 'cannot', "hadn't", 'my', 'having', 'yours', 'if', 'what', 'during', "i'm", 'hers', "let's", 'this', "shouldn't", 'to', 'other', 'you', "they'd", 'such', 'yourselve', 'until', "we'll", 'own', "here's", "they'll", 'few', 'or', 'being', "what's", "i've", "she'd", "wouldn't", "you've", "he'll", 'after', 'the', 'am', 'once', 'from', "didn't", "we've", "don't"}
 visitedSites = set()
 
 
-def scraper(url, resp):
+def scraper(url, resp, frontier, word_frequencies: dict):
     '''
 
     url: actual url
@@ -24,22 +26,23 @@ def scraper(url, resp):
     '''
 
     # if url is not valid, don't parse it
-    if is_valid(url) == False or (get_urlhash(url) in visitedSites):
+    if (is_valid(url) == False) or (get_urlhash(url) in visitedSites ):
+        print("skipping this link in scraper(), url:", url)
         return []
 
     # step 1: extract information from page's text in order to answer question on report
     
     # step 2: return list of urls scrapped from that page
-    links = extract_next_links(url, resp)
+    links = extract_next_links(url, resp, frontier, word_frequencies)
     
 
     # increment number of unique pages
-    numberOfUniquePages += 1
+    # numberOfUniquePages += 1
 
     visitedSites.add(get_urlhash(url))
     return [link for link in links if is_valid(link)]
 
-def extract_next_links(url, resp):
+def extract_next_links(url, resp: Response, frontier, word_frequencies: dict):
     # Implementation required.
     # url: the URL that was used to get the page
     # resp.url: the actual url of the page
@@ -50,25 +53,39 @@ def extract_next_links(url, resp):
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
     
-    if resp.status == 301:
-        
+    # if the url is already in the queue, don't add it again
+    # frontier.to_be_downloaded is the actual queue
+    if url in frontier.to_be_downloaded: 
+        return []
+    
+    # Status Code 301: redirect to permananent new location
+    # Status Code 302: redirect to temporary new location
+    # THIS WILL NOT WORK, resp is not a response object
+    if resp.status == 301 and resp.status == 302:
+        return [resp.headers['Location']]       
     if resp.status != 200:
         # handle poor connection issues
         return []
 
 
     urls_found = []
-    print(type(resp.raw_response.content))
     soup = BeautifulSoup(resp.raw_response.content, "html.parser")
     anchor_tags = soup.find_all("a")
-
     # for every anchor tag, append
     for anchor_tag in anchor_tags:
-        url = anchor_tag["href"]
+        if anchor_tag.has_attr("href"):
+            url = anchor_tag["href"]
+        else:
+            continue
 
         # defragment url
         urlWithoutFragment = url.split('#')[0]
-        urls_found.append(urlWithoutFragment)
+        # is this a relative or absolute url
+        if urlWithoutFragment[0:4] != "http":  
+            urls_found.append(urljoin(url, urlWithoutFragment))
+        else:
+             urls_found.append(urlWithoutFragment)
+       
 
 
     text = soup.get_text()
@@ -78,12 +95,19 @@ def extract_next_links(url, resp):
 
     listOfTokens = tokenFunctions.tokenizeString(text)
     # if longest page word count is this url, 
-    if len(listOfTokens) > longestPageWordCount:
-        longestPageWordCount = len(listOfTokens)
+    # if len(listOfTokens) > longestPageWordCount:
+    #     longestPageWordCount = len(listOfTokens)
 
     tokenDictionary = tokenFunctions.computeWordFrequencies(listOfTokens)
-    # output 50 highest frequency chars
-    
+    for word, frequency in tokenDictionary.items():
+        # frontier.add_word_frequency(word, frequency)
+        if word in word_frequencies:
+            word_frequencies[word] += frequency
+        else:
+            word_frequencies[word] = frequency
+    print(len(word_frequencies))
+
+    # print(len(frontier.save["REPORT_INFO"][1]["word_frequencies"]))    
     return urls_found
 
 def is_valid(url):
@@ -92,15 +116,15 @@ def is_valid(url):
     # There are already some conditions that return False.
     try:
         parsed = urlparse(url)
-        allowed_urls = ['.ics.uci.edu',   # has to be plain urls to allow for using "in" operator
+        allowed_urls = ["ics.uci.edu",
+                        '.ics.uci.edu',   # has to be plain urls to allow for using "in" operator
                         '.cs.uci.edu',
                         '.informatics.uci.edu',
                         '.stat.uci.edu']
         
         allowed = False
-        edited_url = parsed.hostname[parsed.hostname.find(".", 4):]
         for check_against in allowed_urls:
-            if check_against in edited_url:
+            if check_against in url:
                 allowed = True
                 break
             

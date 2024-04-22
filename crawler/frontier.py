@@ -40,6 +40,8 @@ class Frontier(object):
         total_count = len(self.save)
         tbd_count = 0
         for url, completed in self.save.values():
+            if url == "REPORT_INFO":
+                continue
             if not completed and is_valid(url):
                 self.to_be_downloaded.append(url)
                 tbd_count += 1
@@ -70,3 +72,19 @@ class Frontier(object):
 
         self.save[urlhash] = (url, True)
         self.save.sync()
+
+    def initalize_dict(self):
+        self.save["REPORT_INFO"] = ("REPORT_INFO", {"page_count": 0, "word_frequencies": dict(), "longest_page": ("", 0), "ics_subdomains": dict()}) # stores tuple so other functions can still properly access the dictionary
+        self.save.sync()
+
+    def add_word_frequency(self, word: str, frequency: int):
+        if 'REPORT_INFO' not in self.save:
+            print("report_info missing")
+        # word_frequencies = self.save["REPORT_INFO"][1]["word_frequencies"]
+        if word in self.save["REPORT_INFO"][1]["word_frequencies"]:
+            self.save["REPORT_INFO"][1]["word_frequencies"][word] += frequency
+        else: 
+            self.save["REPORT_INFO"][1]["word_frequencies"][word] = frequency
+            print(self.save["REPORT_INFO"][1])
+        self.save.sync()
+        print(f"Added {word} to shelve object, self.save['REPORT_INFO'][1]['word_frequencies'][word] is now", self.save["REPORT_INFO"][1]["word_frequencies"][word])

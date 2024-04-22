@@ -18,6 +18,8 @@ class Worker(Thread):
         super().__init__(daemon=True)
         
     def run(self):
+        # self.frontier.initalize_dict()  # this is to intialize the dictionary of word counts within the shelve object
+        word_frequencies = dict()
         while True:
             tbd_url = self.frontier.get_tbd_url()
             if not tbd_url:
@@ -27,7 +29,7 @@ class Worker(Thread):
             self.logger.info(
                 f"Downloaded {tbd_url}, status <{resp.status}>, "
                 f"using cache {self.config.cache_server}.")
-            scraped_urls = scraper.scraper(tbd_url, resp)
+            scraped_urls = scraper.scraper(tbd_url, resp, self.frontier, word_frequencies)
             for scraped_url in scraped_urls:
                 self.frontier.add_url(scraped_url)
             self.frontier.mark_url_complete(tbd_url)
