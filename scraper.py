@@ -9,14 +9,15 @@ from utils.response import Response
 # from crawler import frontier
 
 # Global Variables:
-numberOfUniquePages = 0
+'''
+numberOfUniquePages = 0         =>      completed in frontier.py class
 longestPageWordCount = 0
 fiftyMostCommonWords = dict()
 numberofSubdomains = 0
-visitedSites = set()
+'''
 
 
-def scraper(url, resp, frontier, word_frequencies: dict):
+def scraper(url, resp, frontier, word_frequencies: dict, longest_url: list):
     '''
 
     url: actual url
@@ -26,23 +27,23 @@ def scraper(url, resp, frontier, word_frequencies: dict):
     '''
 
     # if url is not valid, don't parse it
-    if (is_valid(url) == False) or (get_urlhash(url) in visitedSites ):
+    # no need to check if the url is in the shelve, should be covered by the add_url function in worker.py: url not added to queue if it's been seen before
+    if (is_valid(url) == False):
         print("skipping this link in scraper(), url:", url)
         return []
-
-    # step 1: extract information from page's text in order to answer question on report
+    
+    # subdomain stuff
+    url_parsed = urlparse(url)
+    if (url_parsed.hostname ):
+        pass
     
     # step 2: return list of urls scrapped from that page
-    links = extract_next_links(url, resp, frontier, word_frequencies)
+    links = extract_next_links(url, resp, frontier, word_frequencies, longest_url)
     
-
-    # increment number of unique pages
-    # numberOfUniquePages += 1
-
-    visitedSites.add(get_urlhash(url))
+    # visitedSites.add(get_urlhash(url))
     return [link for link in links if is_valid(link)]
 
-def extract_next_links(url, resp: Response, frontier, word_frequencies: dict):
+def extract_next_links(url, resp: Response, frontier, word_frequencies: dict, longest_url: str):
     # Implementation required.
     # url: the URL that was used to get the page
     # resp.url: the actual url of the page
@@ -60,9 +61,12 @@ def extract_next_links(url, resp: Response, frontier, word_frequencies: dict):
     
     # Status Code 301: redirect to permananent new location
     # Status Code 302: redirect to temporary new location
-    # THIS WILL NOT WORK, resp is not a response object
-    if resp.status == 301 and resp.status == 302:
-        return [resp.headers['Location']]       
+    if resp.status > 300 and resp.status < 307:
+        if is_valid(resp.headers['Location']):
+            return [resp.headers['Location']]     
+        
+        return []  
+    
     if resp.status != 200:
         # handle poor connection issues
         return []
@@ -74,12 +78,12 @@ def extract_next_links(url, resp: Response, frontier, word_frequencies: dict):
     # for every anchor tag, append
     for anchor_tag in anchor_tags:
         if anchor_tag.has_attr("href"):
-            url = anchor_tag["href"]
+            tempUrl = anchor_tag["href"]
         else:
             continue
 
         # defragment url
-        urlWithoutFragment = url.split('#')[0]
+        urlWithoutFragment = tempUrl.split('#')[0]
         # is this a relative or absolute url
         if urlWithoutFragment[0:4] != "http":  
             urls_found.append(urljoin(url, urlWithoutFragment))
@@ -94,9 +98,12 @@ def extract_next_links(url, resp: Response, frontier, word_frequencies: dict):
         pass
 
     listOfTokens = tokenFunctions.tokenizeString(text)
-    # if longest page word count is this url, 
-    # if len(listOfTokens) > longestPageWordCount:
-    #     longestPageWordCount = len(listOfTokens)
+
+    # This function should in theory update the longest url in frontier
+    if len(listOfTokens) > longest_url[1]:
+        longest_url[1] = len(listOfTokens)
+        longest_url[0] = url
+
 
     tokenDictionary = tokenFunctions.computeWordFrequencies(listOfTokens)
     for word, frequency in tokenDictionary.items():
@@ -105,9 +112,10 @@ def extract_next_links(url, resp: Response, frontier, word_frequencies: dict):
             word_frequencies[word] += frequency
         else:
             word_frequencies[word] = frequency
-    print(len(word_frequencies))
+    # print(len(word_frequencies))
 
-    # print(len(frontier.save["REPORT_INFO"][1]["word_frequencies"]))    
+    
+
     return urls_found
 
 def is_valid(url):
@@ -116,23 +124,21 @@ def is_valid(url):
     # There are already some conditions that return False.
     try:
         parsed = urlparse(url)
-        allowed_urls = ["ics.uci.edu",
-                        '.ics.uci.edu',   # has to be plain urls to allow for using "in" operator
+        if (parsed.hostname == None):
+            return False
+        allowed_urls = ['.ics.uci.edu',   # has to be plain urls to allow for using "in" operator
                         '.cs.uci.edu',
                         '.informatics.uci.edu',
                         '.stat.uci.edu']
         
         allowed = False
-        for check_against in allowed_urls:
-            if check_against in url:
+        for allowed_portion in allowed_urls:
+            if allowed_portion in parsed.hostname:
                 allowed = True
                 break
             
         if not allowed:
             return False
-        
-
-
         
         if parsed.scheme not in set(["http", "https"]):
             return False

@@ -12,6 +12,9 @@ class Frontier(object):
         self.logger = get_logger("FRONTIER")
         self.config = config
         self.to_be_downloaded = list()
+
+        # CLASS ATTRIBUTE TO STORE NUMBER OF UNIQUE PAGES
+        self.numberOfUniquePages = 0
         
         if not os.path.exists(self.config.save_file) and not restart:
             # Save file does not exist, but request to load save.
@@ -51,6 +54,7 @@ class Frontier(object):
 
     def get_tbd_url(self):
         try:
+            self.numberOfUniquePages += 1
             return self.to_be_downloaded.pop()
         except IndexError:
             return None
@@ -88,3 +92,16 @@ class Frontier(object):
             print(self.save["REPORT_INFO"][1])
         self.save.sync()
         print(f"Added {word} to shelve object, self.save['REPORT_INFO'][1]['word_frequencies'][word] is now", self.save["REPORT_INFO"][1]["word_frequencies"][word])
+
+    def url_in_shelve(self, url: str):
+        '''
+        this returns true if the url is in the shelve, meaning it has already been looked at
+        '''
+        url_hash = get_urlhash(url)
+        if (url_hash in self.save):
+            return True
+        else:
+            return False
+        
+
+        
