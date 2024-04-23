@@ -20,6 +20,7 @@ class Worker(Thread):
     def run(self):
         word_frequencies = dict()
         longest_url = ["",0]
+        ics_frequencies = dict()
         while True:
             tbd_url = self.frontier.get_tbd_url()
             if not tbd_url:
@@ -34,9 +35,28 @@ class Worker(Thread):
             self.logger.info(
                 f"Downloaded {tbd_url}, status <{resp.status}>, "
                 f"using cache {self.config.cache_server}.")
-            scraped_urls = scraper.scraper(tbd_url, resp, self.frontier, word_frequencies, longest_url)
-            # print("longest url size is : ",longest_url[1], " and longest url is", longest_url[0])
+            scraped_urls = scraper.scraper(tbd_url, resp, self.frontier, word_frequencies, longest_url, ics_frequencies)
             for scraped_url in scraped_urls:
                 self.frontier.add_url(scraped_url)
             self.frontier.mark_url_complete(tbd_url)
             time.sleep(self.config.time_delay)
+
+
+        print("number of unique pages: ", self.frontier.numberOfUniquePages)
+        print("longest url is: ", longest_url[0], "which appeared ", longest_url[1], "times")
+        self.print_most_common_words(word_frequencies)
+        self.print_ics_websites(ics_frequencies)
+
+    def print_most_common_words(self, frequencies: dict):
+        frequencies = sorted(frequencies.items(), key=lambda item: -item[1])
+        for i in range(50):
+            print(frequencies[i][0])
+    
+    def print_ics_websites(self, websites: dict):
+        websites = sorted(websites.items())
+        for pair in websites:
+            if (pair[0] == "https://www.ics.uci.edu" or pair[0] == "http://www.ics.uci.edu"):  # skip the actual ics website
+                continue
+            print(f"{pair[0]}, {pair[1]}")
+
+

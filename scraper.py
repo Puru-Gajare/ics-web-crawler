@@ -17,7 +17,7 @@ numberofSubdomains = 0
 '''
 
 
-def scraper(url, resp, frontier, word_frequencies: dict, longest_url: list):
+def scraper(url, resp, frontier, word_frequencies: dict, longest_url: list, ics_frequencies):
     '''
 
     url: actual url
@@ -34,9 +34,13 @@ def scraper(url, resp, frontier, word_frequencies: dict, longest_url: list):
     
     # subdomain stuff
     url_parsed = urlparse(url)
-    if (url_parsed.hostname ):
-        pass
-    
+    url_parsed = url_parsed.scheme + "://" + url_parsed.hostname
+    if ("ics.uci.edu" in url_parsed):
+        if url_parsed in ics_frequencies:
+            ics_frequencies[url_parsed] += 1
+        else:
+            ics_frequencies[url_parsed] = 1    
+        
     # step 2: return list of urls scrapped from that page
     links = extract_next_links(url, resp, frontier, word_frequencies, longest_url)
     
@@ -61,14 +65,13 @@ def extract_next_links(url, resp: Response, frontier, word_frequencies: dict, lo
     
     # Status Code 301: redirect to permananent new location
     # Status Code 302: redirect to temporary new location
-    if resp.status > 300 and resp.status < 307:
+    # changed to remove the return [] that was after this block
+    if resp.status > 300 and resp.status < 309:
         if is_valid(resp.headers['Location']):
             return [resp.headers['Location']]     
-        
-        return []  
-    
-    if resp.status != 200:
-        # handle poor connection issues
+            
+    if resp.status != 200: 
+        # handle poor connection issues, including 404
         return []
 
 
@@ -93,9 +96,10 @@ def extract_next_links(url, resp: Response, frontier, word_frequencies: dict, lo
 
 
     text = soup.get_text()
-    if len(text) < 300:
-        # random value, if the page contains no information, should we return?
-        pass
+    # this is 500 characters
+    if len(text) < 500:
+        print("skipping because of low information value")
+        return []
 
     listOfTokens = tokenFunctions.tokenizeString(text)
 
@@ -107,14 +111,10 @@ def extract_next_links(url, resp: Response, frontier, word_frequencies: dict, lo
 
     tokenDictionary = tokenFunctions.computeWordFrequencies(listOfTokens)
     for word, frequency in tokenDictionary.items():
-        # frontier.add_word_frequency(word, frequency)
         if word in word_frequencies:
             word_frequencies[word] += frequency
         else:
-            word_frequencies[word] = frequency
-    # print(len(word_frequencies))
-
-    
+            word_frequencies[word] = frequency    
 
     return urls_found
 
