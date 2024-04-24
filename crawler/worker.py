@@ -5,6 +5,7 @@ from utils.download import download
 from utils import get_logger
 import scraper
 import time
+from collections import defaultdict
 
 
 class Worker(Thread):
@@ -22,10 +23,12 @@ class Worker(Thread):
         word_frequencies = dict()
         longest_url = ["",0]
         ics_frequencies = dict()
+        subdomains = defaultdict(int)
 
         count = 0
         while True:
             tbd_url = self.frontier.get_tbd_url()
+
             if not tbd_url:
                 self.logger.info("Frontier is empty. Stopping Crawler.")
                 break
@@ -41,7 +44,7 @@ class Worker(Thread):
             scraped_urls = scraper.scraper(tbd_url, resp, self.frontier, word_frequencies, longest_url, ics_frequencies)
             for scraped_url in scraped_urls:
                 self.frontier.add_url(scraped_url)
-            self.frontier.mark_url_complete(tbd_url)
+            self.frontier.mark_url_complete(tbd_url) 
             if (count % 50 == 0):   # every 500 pages, print to add on something
                 print("******************************************************")
                 print("******************************************************")

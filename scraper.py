@@ -4,35 +4,77 @@ from bs4 import BeautifulSoup
 import tokenFunctions
 from utils import get_urlhash, get_logger
 from utils.response import Response
+from collections import defaultdict
+import time
 
 
-# from crawler import frontier
+# Global Variables: Don't work in this, as the whole file is never really called
 
-# Global Variables:
-'''
-numberOfUniquePages = 0         =>      completed in frontier.py class
-longestPageWordCount = 0
-fiftyMostCommonWords = dict()
-numberofSubdomains = 0
-'''
+# Trap detect functions
 
 
-def scraper(url, resp, frontier, word_frequencies: dict, longest_url: list, ics_frequencies):
+# Avoid infinite redirects
+redirect_tracker = defaultdict(int)
+def is_infinite_redirect(url):
+    redirect_tracker[url] += 1
+    return redirect_tracker[url] > 2  # Redirect limit to avoid traps
+
+# Avoid large files
+def is_large_file(resp):
+    if not resp.raw_response:
+        return False
+    
+    content_type = resp.raw_response.headers.get("Content-Type", "").lower()
+    content_length = int(resp.raw_response.headers.get("Content-Length", "0"))
+
+    non_textual_types = ["image", "video", "application"]
+    large_file_size = 1000000  # 1 MB
+
+    return any(t in content_type for t in non_textual_types) or content_length > large_file_size
+
+# Avoid infinite trap by not revisiting
+
+
+url_revisit_tracker = defaultdict(list)
+def is_infinite_trap(url, revisit_threshold= 10, time_window=20):
+    current_time = time.time()
+    url_revisit_tracker[url].append(current_time)
+
+    # Remove old entries outside the time window
+    url_revisit_tracker[url] = [t for t in url_revisit_tracker[url] if (current_time - t) < time_window]
+
+    return len(url_revisit_tracker[url]) > revisit_threshold  # High revisit frequency indicates a trap
+
+# Avoid recursive patterns
+def has_recursive_pattern(url):
+    parsed = urlparse(url)
+    path_segments = parsed.path.split("/")
+    return len(set(path_segments)) < len(path_segments)  # Detect recursive paths
+
+# main scraper
+def scraper(url, resp, frontier, word_frequencies: dict, longest_url: list, ics_frequencies: dict):
     '''
-
     url: actual url
     resp: web response containing the page
-
     return: list of urls scrapped from page
     '''
-
-    # if url is not valid, don't parse it
-    # no need to check if the url is in the shelve, should be covered by the add_url function in worker.py: url not added to queue if it's been seen before
-    if (is_valid(url) == False):
-        print("skipping this link in scraper(), url:", url)
+    # Handle infinite redirects
+    if is_infinite_redirect(url):
         return []
     
-    # subdomain stuff
+    # Handle large files and non-textual content
+    if is_large_file(resp):
+        return []  # Avoid large files
+
+    # Check for infinite traps
+    if is_infinite_trap(url) or is_infinite_redirect(url):
+        return []
+
+    # Avoid recursive paths
+    if has_recursive_pattern(url):
+        return []
+    
+    # records all ics.uci.edu subdomains
     url_parsed = urlparse(url)
     url_parsed = url_parsed.scheme + "://" + url_parsed.hostname
     if ("ics.uci.edu" in url_parsed):
@@ -41,11 +83,27 @@ def scraper(url, resp, frontier, word_frequencies: dict, longest_url: list, ics_
         else:
             ics_frequencies[url_parsed] = 1    
         
-    # step 2: return list of urls scrapped from that page
+    # skip if url is already in the queue
+    if url in frontier.to_be_downloaded: 
+        return []
+    
+    # Status Code 301: redirect to permananent new location
+    # Status Code 307: redirect to temporary new location
+    if resp.status > 300 and resp.status < 309:
+        if is_valid(resp.headers['Location']):
+            return [resp.headers['Location']]     
+            
+    # handle poor connection issues, including 404
+    if resp.status != 200: 
+        return []
+    
     links = extract_next_links(url, resp, frontier, word_frequencies, longest_url)
     
-    # visitedSites.add(get_urlhash(url))
+    
+    # return scraped urls
     return [link for link in links if is_valid(link)]
+
+
 
 def extract_next_links(url, resp: Response, frontier, word_frequencies: dict, longest_url: str):
     # Implementation required.
@@ -58,31 +116,19 @@ def extract_next_links(url, resp: Response, frontier, word_frequencies: dict, lo
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
     
-    # if the url is already in the queue, don't add it again
-    # frontier.to_be_downloaded is the actual queue
-    if url in frontier.to_be_downloaded: 
-        return []
-    
-    # Status Code 301: redirect to permananent new location
-    # Status Code 302: redirect to temporary new location
-    # changed to remove the return [] that was after this block
-    if resp.status > 300 and resp.status < 309:
-        if is_valid(resp.headers['Location']):
-            return [resp.headers['Location']]     
-            
-    if resp.status != 200: 
-        # handle poor connection issues, including 404
-        return []
 
 
     urls_found = []
     soup = BeautifulSoup(resp.raw_response.content, "html.parser")
     anchor_tags = soup.find_all("a")
     text = soup.get_text()
-    # for every anchor tag, append
+
+    # if text has low information value, then skip
     if len(text) < 500:
         print("skipping because of low information value")
         return []
+
+     # for every anchor tag, append
     for anchor_tag in anchor_tags:
         if anchor_tag.has_attr("href"):
             tempUrl = anchor_tag["href"]
@@ -96,15 +142,13 @@ def extract_next_links(url, resp: Response, frontier, word_frequencies: dict, lo
             urls_found.append(urljoin(url, urlWithoutFragment))
         else:
              urls_found.append(urlWithoutFragment)
-       
 
-
+    # do we need this line? yeah its used for tokenizeString
     text = soup.get_text()
-    # this is 500 characters
 
     listOfTokens = tokenFunctions.tokenizeString(text)
 
-    # This function should in theory update the longest url in frontier
+    # updates the url with the most tokens
     if len(listOfTokens) > longest_url[1]:
         longest_url[1] = len(listOfTokens)
         longest_url[0] = url
@@ -118,6 +162,7 @@ def extract_next_links(url, resp: Response, frontier, word_frequencies: dict, lo
             word_frequencies[word] = frequency    
 
     return urls_found
+    
 
 def is_valid(url):
     # Decide whether to crawl this url or not. 
@@ -143,21 +188,21 @@ def is_valid(url):
             if allowed_portion in parsed.hostname:
                 allowed = True
                 break
-            
+
         if not allowed:
             return False
-        
+    
         if parsed.scheme not in set(["http", "https"]):
             return False
         return not re.match(
-            r".*\.(css|js|bmp|gif|jpe?g|ico"
+            r".*\.(css|js|bmp|gif|jpe?g|ico|img|png|jpg|jpeg|pdf|ai|gif|raw|psd|eps"
             + r"|png|tiff?|mid|mp2|mp3|mp4"
             + r"|wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf"
-            + r"|ps|eps|tex|ppt|pptx|doc|docx|xls|xlsx|names"
+            + r"|ps|eps|tex|ppt|ppsx|pptx|doc|docx|xls|xlsx|names"
             + r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso"
             + r"|epub|dll|cnf|tgz|sha1"
             + r"|thmx|mso|arff|rtf|jar|csv"
-            + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower())
+            + r"|rm|smil|wmv|war|swf|wma|zip|rar|gz)$", parsed.path.lower())
 
     except TypeError:
         print ("TypeError for ", parsed)
