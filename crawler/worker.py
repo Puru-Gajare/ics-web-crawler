@@ -10,6 +10,7 @@ import time
 class Worker(Thread):
     def __init__(self, worker_id, config, frontier):
         self.logger = get_logger(f"Worker-{worker_id}", "Worker")
+        # self.crawler_logger = get_logger(f"Worker-{worker_id}", "CRAWLER")
         self.config = config
         self.frontier = frontier
         # basic check for requests in scraper
@@ -21,6 +22,8 @@ class Worker(Thread):
         word_frequencies = dict()
         longest_url = ["",0]
         ics_frequencies = dict()
+
+        count = 0
         while True:
             tbd_url = self.frontier.get_tbd_url()
             if not tbd_url:
@@ -39,24 +42,49 @@ class Worker(Thread):
             for scraped_url in scraped_urls:
                 self.frontier.add_url(scraped_url)
             self.frontier.mark_url_complete(tbd_url)
+            if (count % 50 == 0):   # every 500 pages, print to add on something
+                print("******************************************************")
+                print("******************************************************")
+                print("number of unique pages: ", self.frontier.numberOfUniquePages)
+                print("longest url is: ", longest_url[0], "which had", longest_url[1], "words")
+                self.print_most_common_words(word_frequencies, False)
+                self.print_ics_websites(ics_frequencies, False)
+                print("******************************************************")
+                print("******************************************************")
+            count += 1
             time.sleep(self.config.time_delay)
 
-
+        print("******************************************************")
+        print("******************************************************")
         print("number of unique pages: ", self.frontier.numberOfUniquePages)
-        print("longest url is: ", longest_url[0], "which appeared ", longest_url[1], "times")
-        self.print_most_common_words(word_frequencies)
-        self.print_ics_websites(ics_frequencies)
+        print("longest url is: ", longest_url[0], "which had", longest_url[1], "words")
+        print(word_frequencies, False)
+        print(ics_frequencies, False)
+        print("******************************************************")
+        print("******************************************************")
 
-    def print_most_common_words(self, frequencies: dict):
+    def print_most_common_words(self, frequencies: dict, log: bool):
         frequencies = sorted(frequencies.items(), key=lambda item: -item[1])
+        to_print = []
         for i in range(50):
-            print(frequencies[i][0])
+            to_print.append(frequencies[i][0])
+            if log:
+                # self.crawler_logger.info(frequencies[i][0])
+                pass
+        print(to_print)
     
-    def print_ics_websites(self, websites: dict):
-        websites = sorted(websites.items())
+    def print_ics_websites(self, websites: dict, log: bool):
+        websites = sorted(websites.items())  # list of tuples
+        to_print = []
         for pair in websites:
             if (pair[0] == "https://www.ics.uci.edu" or pair[0] == "http://www.ics.uci.edu"):  # skip the actual ics website
                 continue
-            print(f"{pair[0]}, {pair[1]}")
+            to_print.append(f"{pair[0]}, {pair[1]}")
+
+        if log:
+            # self.crawler_logger.info(f"{pair[0]}, {pair[1]}")
+            pass    
+        print(to_print)
+
 
 

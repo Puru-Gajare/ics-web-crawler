@@ -78,7 +78,11 @@ def extract_next_links(url, resp: Response, frontier, word_frequencies: dict, lo
     urls_found = []
     soup = BeautifulSoup(resp.raw_response.content, "html.parser")
     anchor_tags = soup.find_all("a")
+    text = soup.get_text()
     # for every anchor tag, append
+    if len(text) < 500:
+        print("skipping because of low information value")
+        return []
     for anchor_tag in anchor_tags:
         if anchor_tag.has_attr("href"):
             tempUrl = anchor_tag["href"]
@@ -97,9 +101,6 @@ def extract_next_links(url, resp: Response, frontier, word_frequencies: dict, lo
 
     text = soup.get_text()
     # this is 500 characters
-    if len(text) < 500:
-        print("skipping because of low information value")
-        return []
 
     listOfTokens = tokenFunctions.tokenizeString(text)
 
@@ -126,6 +127,12 @@ def is_valid(url):
         parsed = urlparse(url)
         if (parsed.hostname == None):
             return False
+        
+        blacklisted = ["https://swiki.ics.uci.edu/doku.php", 'http://www.informatics.uci.edu/files/pdf/InformaticsBrochure-March2018']
+        for black_url in blacklisted:
+            if black_url in url:
+                return False
+        
         allowed_urls = ['.ics.uci.edu',   # has to be plain urls to allow for using "in" operator
                         '.cs.uci.edu',
                         '.informatics.uci.edu',
@@ -156,20 +163,3 @@ def is_valid(url):
         print ("TypeError for ", parsed)
         raise
 
-
-# def get_webpage(url: str) -> BeautifulSoup:
-#     '''
-#     this function gets the webpage and returns a soup object
-
-#     @return: Soup object
-#     @error: None
-#     '''
-#     try:
-#         response = requests.get(url)
-#         if response.status_code != 200:
-#             print("failed to fetch html from url:   ", url)
-#             return None
-#         return BeautifulSoup(response.text, html.parser) 
-#     except requests.RequestException as e:
-#         print(f"Error fetching HTML from {url}: {e}")
-#         return None
