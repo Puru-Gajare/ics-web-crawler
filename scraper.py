@@ -33,11 +33,11 @@ def is_large_file(resp):
     return any(t in content_type for t in non_textual_types) or content_length > large_file_size
 
 # Avoid infinite trap by not revisiting
-
-
 url_revisit_tracker = defaultdict(list)
 def is_infinite_trap(url, revisit_threshold= 10, time_window=20):
     current_time = time.time()
+    parsed_url = urlparse(url)
+    url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"  # changed url to not include query parameters
     url_revisit_tracker[url].append(current_time)
 
     # Remove old entries outside the time window
